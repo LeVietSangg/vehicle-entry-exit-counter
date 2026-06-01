@@ -12,7 +12,7 @@ from pathlib import Path
 import cv2
 
 from processing.counter import VEHICLE_CLASS_MAP
-from processing.tracker import build_yolo_kwargs, init_yolo
+from processing.tracker import build_yolo_kwargs, init_tracker, init_yolo
 
 
 def _parse_args() -> argparse.Namespace:
@@ -55,6 +55,8 @@ def main() -> None:
 	)
 	yolo_kwargs = build_yolo_kwargs(class_ids, conf=args.conf, iou=args.iou)
 
+	tracker = init_tracker()
+
 	source_path = Path(args.source)
 	if not source_path.exists():
 		print(f"Khong tim thay video: {source_path}")
@@ -70,9 +72,10 @@ def main() -> None:
 	results = model.predict(frame, verbose=False, **yolo_kwargs)
 	total_boxes = sum(len(r.boxes) for r in results)
 	print(
-		"Da khoi tao YOLOv8 va bo loc class phuong tien. "
-		f"So detections o frame dau: {total_boxes}"
-	)
+	"Da khoi tao YOLOv8, ByteTrack va bo loc class phuong tien. "
+	f"So detections o frame dau: {total_boxes}. "
+	f"Tracker: {tracker.__class__.__name__}"
+)
 
 	cap.release()
 

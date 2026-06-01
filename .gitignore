@@ -5,3 +5,4 @@ outputs/*.mp4
 outputs/*.xlsx
 data/*.mp4
 .DS_Store
+*.pt

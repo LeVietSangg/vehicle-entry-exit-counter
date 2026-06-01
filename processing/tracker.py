@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from typing import Iterable, Sequence
 
+import supervision as sv
+
+
 import pickle
 
 import inspect
@@ -115,3 +118,23 @@ def build_yolo_kwargs(
 		"conf": conf,
 		"iou": iou,
 	}
+
+def init_tracker(
+	track_activation_threshold: float = 0.25,
+	lost_track_buffer: int = 30,
+	minimum_matching_threshold: float = 0.8,
+	frame_rate: int = 30,
+) -> sv.ByteTrack:
+	"""Khởi tạo ByteTrack tracker.
+
+	Tracker giúp bám vết phương tiện qua từng frame và giữ ổn định ID
+	cho cùng một chiếc xe trong quá trình đi từ đầu đến cuối video.
+	"""
+	tracker = sv.ByteTrack(
+		track_activation_threshold=track_activation_threshold,
+		lost_track_buffer=lost_track_buffer,
+		minimum_matching_threshold=minimum_matching_threshold,
+		frame_rate=frame_rate,
+	)
+
+	return tracker
