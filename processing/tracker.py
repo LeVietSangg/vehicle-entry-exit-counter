@@ -4,15 +4,16 @@ tracker.py — Module cấu hình YOLOv8 và danh sách class phương tiện.
 Chức năng chính:
 - Khởi tạo model YOLOv8.
 - Gán bộ lọc class phương tiện cần theo dõi.
+- Khởi tạo ByteTrack để bám vết.
 """
 
 from __future__ import annotations
 
 from typing import Iterable, Sequence
 
-import pickle
-
 import inspect
+
+import supervision as sv
 import torch
 from torch.nn.modules.container import Sequential
 from ultralytics import YOLO
@@ -115,3 +116,29 @@ def build_yolo_kwargs(
 		"conf": conf,
 		"iou": iou,
 	}
+
+
+def init_tracker(
+	track_thresh: float = 0.25,
+	track_buffer: int = 120,
+	match_thresh: float = 0.8,
+	frame_rate: int = 30,
+) -> sv.ByteTrack:
+	"""Khởi tạo thuật toán bám vết ByteTrack.
+
+	Args:
+		track_thresh: Ngưỡng confidence tối thiểu để duy trì bám vết.
+		track_buffer: Số frame tối đa giữ lại ID khi bị mất dấu.
+		match_thresh: Ngưỡng IoU để ghép nối bounding box.
+		frame_rate: Tốc độ khung hình (FPS) của video.
+
+	Returns:
+		Đối tượng sv.ByteTrack.
+	"""
+	tracker = sv.ByteTrack(
+		track_thresh=track_thresh,
+		track_buffer=track_buffer,
+		match_thresh=match_thresh,
+		frame_rate=frame_rate,
+	)
+	return tracker
