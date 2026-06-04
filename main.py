@@ -10,9 +10,10 @@ import argparse
 from pathlib import Path
 
 import cv2
+import supervision as sv
 
 from processing.counter import VEHICLE_CLASS_MAP
-from processing.tracker import build_yolo_kwargs, init_yolo
+from processing.tracker import build_yolo_kwargs, init_tracker, init_yolo
 
 
 def _parse_args() -> argparse.Namespace:
@@ -61,17 +62,32 @@ def main() -> None:
 		return
 
 	cap = cv2.VideoCapture(str(source_path))
-	ok, frame = cap.read()
-	if not ok:
-		print("Khong doc duoc frame tu video.")
-		cap.release()
-		return
+	fps = cap.get(cv2.CAP_PROP_FPS)
+	if not fps or fps <= 0:
+		fps = 30.0
 
-	results = model.predict(frame, verbose=False, **yolo_kwargs)
-	total_boxes = sum(len(r.boxes) for r in results)
+	tracker = init_tracker(frame_rate=int(fps))
+	unique_track_ids: set[int] = set()
+	frame_index = 0
+
+	while True:
+		ok, frame = cap.read()
+		if not ok:
+			break
+		frame_index += 1
+
+		results = model.predict(frame, verbose=False, **yolo_kwargs)
+		if not results:
+			continue
+		detections = sv.Detections.from_ultralytics(results[0])
+		tracked = tracker.update_with_detections(detections)
+
+		if tracked.tracker_id is not None:
+			unique_track_ids.update(int(track_id) for track_id in tracked.tracker_id)
+
 	print(
-		"Da khoi tao YOLOv8 va bo loc class phuong tien. "
-		f"So detections o frame dau: {total_boxes}"
+		"Da chay ByteTrack. "
+		f"So frame: {frame_index}, so track_id: {len(unique_track_ids)}"
 	)
 
 	cap.release()
