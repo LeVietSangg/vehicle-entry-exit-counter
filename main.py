@@ -62,10 +62,16 @@ def _parse_args() -> argparse.Namespace:
         help="ByteTrack match_thresh (IoU for matching boxes)",
     )
     parser.add_argument(
-        "--line_y",
+        "--entry_line_y",
         type=int,
-        default=None,
-        help="Y coordinate of virtual counting line (pixels). If omitted, uses default position.",
+        default=288,
+        help="Y coordinate of virtual counting line for ENTRY (default 288).",
+    )
+    parser.add_argument(
+        "--exit_line_y",
+        type=int,
+        default=200,
+        help="Y coordinate of virtual counting line for EXIT (default 200).",
     )
     # Existing args continue below
     return parser.parse_args()
@@ -112,21 +118,22 @@ def main() -> None:
     )
     logger = VehicleLogger(fps=fps)
 
-    # Cấu hình vạch ảo (LineZone) - Sử dụng tham số --line_y nếu được cung cấp, ngược lại dùng trung tâm khung
-    # Cấu hình vạch ảo (LineZone) - Sử dụng tham số --line_y nếu được cung cấp, ngược lại dùng trung tâm khung
-    # Default virtual counting line at 40% of the frame height (can be overridden with --line_y)
-    y_line = args.line_y if args.line_y is not None else int(height * 0.4)
-    START = sv.Point(0, y_line)
-    END = sv.Point(width, y_line)
-    line_zone = sv.LineZone(start=START, end=END)
+    # Cấu hình 2 vạch ảo độc lập cho Entry và Exit
+    START_ENTRY = sv.Point(0, args.entry_line_y)
+    END_ENTRY = sv.Point(width, args.entry_line_y)
+    line_zone_entry = sv.LineZone(start=START_ENTRY, end=END_ENTRY)
+
+    START_EXIT = sv.Point(0, args.exit_line_y)
+    END_EXIT = sv.Point(width, args.exit_line_y)
+    line_zone_exit = sv.LineZone(start=START_EXIT, end=END_EXIT)
 
     # Khởi tạo các công cụ vẽ (Annotator) của supervision
-    box_annotator = sv.BoxAnnotator(thickness=2)
+    box_annotator = sv.BoundingBoxAnnotator(thickness=2)
     label_annotator = sv.LabelAnnotator(text_thickness=2, text_scale=0.5)
     line_zone_annotator = sv.LineZoneAnnotator(thickness=2, text_thickness=2, text_scale=1)
 
     frame_index = 0
-    print(f"Bắt đầu xử lý video... Vạch kẻ ảo đang đặt ở tọa độ Y = {y_line}")
+    print(f"Bắt đầu xử lý video... Vạch Entry Y={args.entry_line_y}, Vạch Exit Y={args.exit_line_y}")
 
     while True:
         ok, frame = cap.read()
@@ -146,9 +153,9 @@ def main() -> None:
         detections = tracker.update_with_detections(detections)
 
         # Cập nhật LineZone và kiểm tra đếm hướng
-        # trigger trả về (in_count_array, out_count_array) dạng bool
         if len(detections) > 0:
-            crossed_in, crossed_out = line_zone.trigger(detections=detections)
+            crossed_in_entry, _ = line_zone_entry.trigger(detections=detections)
+            _, crossed_out_exit = line_zone_exit.trigger(detections=detections)
 
             # Ghi log nếu có xe đi ngang qua vạch
             for i, track_id in enumerate(detections.tracker_id):
@@ -156,9 +163,9 @@ def main() -> None:
                 confidence = detections.confidence[i]
                 
                 direction = None
-                if crossed_in[i]:
+                if crossed_in_entry[i]:
                     direction = "Entry"
-                elif crossed_out[i]:
+                elif crossed_out_exit[i]:
                     direction = "Exit"
                 
                 if direction:
@@ -183,7 +190,14 @@ def main() -> None:
         annotated_frame = label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)
         
         # Vẽ vạch ảo và bộ đếm tổng số
-        annotated_frame = line_zone_annotator.annotate(annotated_frame, line_counter=line_zone)
+        if len(detections) > 0:
+            line_zone_entry.in_count = logger.total_entry
+            line_zone_entry.out_count = 0
+            line_zone_exit.in_count = 0
+            line_zone_exit.out_count = logger.total_exit
+            
+        annotated_frame = line_zone_annotator.annotate(annotated_frame, line_counter=line_zone_entry)
+        annotated_frame = line_zone_annotator.annotate(annotated_frame, line_counter=line_zone_exit)
 
         # Ghi frame vào video đầu ra
         out_video.write(annotated_frame)
