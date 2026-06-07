@@ -135,10 +135,12 @@ def init_tracker(
 	Returns:
 		Đối tượng sv.ByteTrack.
 	"""
+	# Dùng tên tham số mới (supervision >= 0.22) để tránh deprecated warning
+	# và đảm bảo tham số được áp dụng đúng
 	tracker = sv.ByteTrack(
-		track_thresh=track_thresh,
-		track_buffer=track_buffer,
-		match_thresh=match_thresh,
+		track_activation_threshold=track_thresh,
+		lost_track_buffer=track_buffer,
+		minimum_matching_threshold=match_thresh,
 		frame_rate=frame_rate,
 	)
 	return tracker
