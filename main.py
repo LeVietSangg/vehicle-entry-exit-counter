@@ -12,6 +12,7 @@ from pathlib import Path
 import cv2
 import supervision as sv
 import numpy as np
+import json
 
 from processing.counter import VEHICLE_CLASS_MAP, VehicleLogger
 from processing.tracker import build_yolo_kwargs, init_tracker, init_yolo
@@ -28,8 +29,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="yolov8n.pt",
-        help="Model YOLOv8 (vd: yolov8n.pt)",
+        default="yolov8m.pt",
+        help="Model YOLOv8 (vd: yolov8m.pt)",
     )
     parser.add_argument(
         "--conf",
@@ -52,7 +53,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--track_buffer",
         type=int,
-        default=120,
+        default=30,
         help="ByteTrack track_buffer (frames to keep lost tracks)",
     )
     parser.add_argument(
@@ -72,6 +73,18 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=200,
         help="Y coordinate of virtual counting line for EXIT (default 200).",
+    )
+    parser.add_argument(
+        "--entry_polygon",
+        type=str,
+        default="",
+        help="JSON array of [x, y] coordinates for Entry polygon ROI.",
+    )
+    parser.add_argument(
+        "--exit_polygon",
+        type=str,
+        default="",
+        help="JSON array of [x, y] coordinates for Exit polygon ROI.",
     )
     # Existing args continue below
     return parser.parse_args()
@@ -127,10 +140,24 @@ def main() -> None:
     END_EXIT = sv.Point(width, args.exit_line_y)
     line_zone_exit = sv.LineZone(start=START_EXIT, end=END_EXIT)
 
+    # Khởi tạo PolygonZones nếu có
+    polygon_zone_entry = None
+    if args.entry_polygon:
+        pts = np.array(json.loads(args.entry_polygon), np.int32)
+        polygon_zone_entry = sv.PolygonZone(polygon=pts, frame_resolution_wh=(width, height))
+        
+    polygon_zone_exit = None
+    if args.exit_polygon:
+        pts = np.array(json.loads(args.exit_polygon), np.int32)
+        polygon_zone_exit = sv.PolygonZone(polygon=pts, frame_resolution_wh=(width, height))
+
     # Khởi tạo các công cụ vẽ (Annotator) của supervision
     box_annotator = sv.BoundingBoxAnnotator(thickness=2)
     label_annotator = sv.LabelAnnotator(text_thickness=2, text_scale=0.5)
     line_zone_annotator = sv.LineZoneAnnotator(thickness=2, text_thickness=2, text_scale=1)
+    
+    poly_annotator_entry = sv.PolygonZoneAnnotator(zone=polygon_zone_entry, color=sv.Color.from_hex("#00FF00"), thickness=2) if polygon_zone_entry else None
+    poly_annotator_exit = sv.PolygonZoneAnnotator(zone=polygon_zone_exit, color=sv.Color.from_hex("#FF0000"), thickness=2) if polygon_zone_exit else None
 
     frame_index = 0
     print(f"Bắt đầu xử lý video... Vạch Entry Y={args.entry_line_y}, Vạch Exit Y={args.exit_line_y}")
@@ -157,15 +184,18 @@ def main() -> None:
             crossed_in_entry, _ = line_zone_entry.trigger(detections=detections)
             _, crossed_out_exit = line_zone_exit.trigger(detections=detections)
 
-            # Ghi log nếu có xe đi ngang qua vạch
+            mask_entry = polygon_zone_entry.trigger(detections=detections) if polygon_zone_entry else np.ones(len(detections), dtype=bool)
+            mask_exit = polygon_zone_exit.trigger(detections=detections) if polygon_zone_exit else np.ones(len(detections), dtype=bool)
+
+            # Ghi log nếu có xe đi ngang qua vạch VÀ nằm trong vùng chỉ định
             for i, track_id in enumerate(detections.tracker_id):
                 class_id = detections.class_id[i]
                 confidence = detections.confidence[i]
                 
                 direction = None
-                if crossed_in_entry[i]:
+                if crossed_in_entry[i] and mask_entry[i]:
                     direction = "Entry"
-                elif crossed_out_exit[i]:
+                elif crossed_out_exit[i] and mask_exit[i]:
                     direction = "Exit"
                 
                 if direction:
@@ -198,6 +228,11 @@ def main() -> None:
             
         annotated_frame = line_zone_annotator.annotate(annotated_frame, line_counter=line_zone_entry)
         annotated_frame = line_zone_annotator.annotate(annotated_frame, line_counter=line_zone_exit)
+        
+        if poly_annotator_entry:
+            annotated_frame = poly_annotator_entry.annotate(scene=annotated_frame)
+        if poly_annotator_exit:
+            annotated_frame = poly_annotator_exit.annotate(scene=annotated_frame)
 
         # Ghi frame vào video đầu ra
         out_video.write(annotated_frame)
