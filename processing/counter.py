@@ -7,7 +7,9 @@ Chức năng chính:
 - Tính tổng hợp theo loại xe và hướng (get_summary).
 - Xuất file Excel với 2 sheet: Summary + Detail (export_to_excel).
 """
-
+from datetime import datetime
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 import os
 import pandas as pd
 
@@ -228,8 +230,97 @@ class VehicleLogger:
 
         # Ghi ra file Excel với 2 sheet
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-            df_summary.to_excel(writer, sheet_name="Summary", index=False)
-            df_detail.to_excel(writer, sheet_name="Detail", index=False)
+            df_summary.to_excel(
+                writer,
+                sheet_name="Summary",
+                index=False,
+                startrow=2,
+            )
+            df_detail.to_excel(
+                writer,
+                sheet_name="Detail",
+                index=False,
+                startrow=2,
+            )
+
+            workbook = writer.book
+
+            header_fill = PatternFill(start_color="D9EAF7", end_color="D9EAF7", fill_type="solid")
+            total_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+            title_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+            border = Border(
+                left=Side(style="thin", color="FFB7B7B7"),
+                right=Side(style="thin", color="FFB7B7B7"),
+                top=Side(style="thin", color="FFB7B7B7"),
+                bottom=Side(style="thin", color="FFB7B7B7"),
+            )
+
+            for sheet_name in ("Summary", "Detail"):
+                worksheet = writer.sheets[sheet_name]
+                worksheet.sheet_view.showGridLines = False
+
+                # Create title and subtitle rows
+                if sheet_name == "Summary":
+                    title = "BÁO CÁO TỔNG HỢP XE"
+                    subtitle = f"Tạo lúc: {datetime.now():%Y-%m-%d %H:%M:%S}"
+                    data_columns = ["Loại xe", "Số xe Vào (Entry)", "Số xe Ra (Exit)", "Tổng"]
+                else:
+                    title = "BÁO CÁO CHI TIẾT XE"
+                    subtitle = f"Tạo lúc: {datetime.now():%Y-%m-%d %H:%M:%S}"
+                    data_columns = ["STT", "Track ID", "Loại xe", "Hướng", "Frame", "Thời gian", "Độ tin cậy"]
+
+                last_column = chr(ord("A") + len(data_columns) - 1)
+                worksheet.merge_cells(f"A1:{last_column}1")
+                worksheet["A1"] = title
+                worksheet["A1"].font = Font(size=14, bold=True, color="FFFFFFFF")
+                worksheet["A1"].fill = title_fill
+                worksheet["A1"].alignment = Alignment(horizontal="center", vertical="center")
+
+                worksheet.merge_cells(f"A2:{last_column}2")
+                worksheet["A2"] = subtitle
+                worksheet["A2"].font = Font(size=10, italic=True)
+                worksheet["A2"].alignment = Alignment(horizontal="center", vertical="center")
+
+                header_row = 3
+                worksheet.freeze_panes = f"A{header_row + 1}"
+
+                for cell in worksheet[header_row]:
+                    cell.font = Font(bold=True, color="FF000000")
+                    cell.fill = header_fill
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+                    cell.border = border
+
+                # Style total row in summary sheet
+                if sheet_name == "Summary":
+                    total_row = worksheet.max_row
+                    for cell in worksheet[total_row]:
+                        cell.font = Font(bold=True)
+                        cell.fill = total_fill
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                        cell.border = border
+
+                for column_cells in worksheet.columns:
+                    max_length = 0
+                    column_letter = get_column_letter(column_cells[0].column)
+
+                    for cell in column_cells:
+                        if cell.value is not None:
+                            max_length = max(max_length, len(str(cell.value)))
+
+                    worksheet.column_dimensions[column_letter].width = min(max_length + 4, 32)
+
+                for row in worksheet.iter_rows(min_row=header_row + 1):
+                    for cell in row:
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                        cell.border = border
+
+                if sheet_name == "Detail":
+                    # Format confidence column as percentage-like value with two decimals
+                    confidence_col = data_columns.index("Độ tin cậy") + 1
+                    for row in worksheet.iter_rows(min_row=header_row + 1, min_col=confidence_col, max_col=confidence_col):
+                        for cell in row:
+                            if isinstance(cell.value, (int, float)):
+                                cell.number_format = "0.00"
 
         return os.path.abspath(output_path)
 
