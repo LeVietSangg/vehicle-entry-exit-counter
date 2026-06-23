@@ -1,0 +1,5 @@
+﻿track_id,class_id,class_name,direction,frame_number,timestamp,confidence
+1,2,car,Entry,30,00:00:01,0.95
+2,3,motorcycle,Exit,60,00:00:02,0.88
+3,5,bus,Entry,90,00:00:03,0.8
+4,7,truck,Exit,120,00:00:04,0.7
