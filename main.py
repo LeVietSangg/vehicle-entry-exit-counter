@@ -72,14 +72,16 @@ def main() -> None:
 
     logger = VehicleLogger(fps=fps)
 
+    mid_x = width // 2
+
     entry_line = sv.LineZone(
-        start=sv.Point(0, args.entry_line_y),
+        start=sv.Point(mid_x, args.entry_line_y),
         end=sv.Point(width, args.entry_line_y),
     )
 
     exit_line = sv.LineZone(
         start=sv.Point(0, args.exit_line_y),
-        end=sv.Point(width, args.exit_line_y),
+        end=sv.Point(mid_x, args.exit_line_y),
     )
 
     box_annotator = sv.BoundingBoxAnnotator(thickness=2)
@@ -145,7 +147,7 @@ def main() -> None:
 
         cv2.line(
             annotated_frame,
-            (0, args.entry_line_y),
+            (mid_x, args.entry_line_y),
             (width, args.entry_line_y),
             (0, 255, 0),
             2,
@@ -163,7 +165,7 @@ def main() -> None:
         cv2.line(
             annotated_frame,
             (0, args.exit_line_y),
-            (width, args.exit_line_y),
+            (mid_x, args.exit_line_y),
             (0, 0, 255),
             2,
         )

@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -12,8 +13,8 @@ class VehicleCounterApp:
 
         self.video_path = tk.StringVar(value="data/video_easy.mp4")
         self.model_path = tk.StringVar(value="yolov8m.pt")
-        self.conf = tk.StringVar(value="0.01")
-        self.iou = tk.StringVar(value="0.20")
+        self.conf = tk.StringVar(value="0.25")
+        self.iou = tk.StringVar(value="0.45")
         self.entry_line_y = tk.StringVar(value="430")
         self.exit_line_y = tk.StringVar(value="330")
 
@@ -110,7 +111,7 @@ class VehicleCounterApp:
             return
 
         command = [
-            "python",
+            sys.executable,
             "main.py",
             "--source", video,
             "--model", self.model_path.get(),
@@ -146,8 +147,8 @@ class VehicleCounterApp:
     def reset_form(self):
         self.video_path.set("data/video_easy.mp4")
         self.model_path.set("yolov8m.pt")
-        self.conf.set("0.01")
-        self.iou.set("0.20")
+        self.conf.set("0.25")
+        self.iou.set("0.45")
         self.entry_line_y.set("288")
         self.exit_line_y.set("200")
         self.output_text.delete("1.0", tk.END)
