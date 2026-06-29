@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import re
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -139,7 +140,14 @@ class VehicleCounterApp:
                 self.output_text.insert(tk.END, "\n--- ERROR ---\n")
                 self.output_text.insert(tk.END, result.stderr)
 
+            # Phân tích log để lấy đường dẫn file Excel
+            match = re.search(r"Đã lưu báo cáo Excel tại:\s*(.*\.xlsx)", result.stdout)
+            
             messagebox.showinfo("Done", "Xử lý hoàn tất. Kiểm tra thư mục outputs.")
+            
+            if match:
+                excel_path = match.group(1).strip()
+                self.show_chart(excel_path)
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -157,6 +165,52 @@ class VehicleCounterApp:
         outputs = Path("outputs")
         outputs.mkdir(exist_ok=True)
         subprocess.Popen(f'explorer "{outputs.resolve()}"')
+
+    def show_chart(self, excel_path):
+        try:
+            import pandas as pd
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            
+            # Đọc dữ liệu, bỏ 2 dòng tiêu đề đầu tiên của Excel
+            df = pd.read_excel(excel_path, sheet_name=0, header=2) # Đọc sheet Summary
+            # Bỏ dòng tổng cộng
+            df = df[df['Loại xe'] != 'TỔNG CỘNG']
+            df = df[df['Tổng'] > 0] # Chỉ lấy xe có dữ liệu
+            
+            if df.empty:
+                return # Không có dữ liệu để vẽ
+
+            # Tạo cửa sổ mới (Toplevel)
+            chart_win = tk.Toplevel(self.root)
+            chart_win.title("Thống kê Dữ liệu Giao thông")
+            chart_win.geometry("900x450")
+            
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 4.5))
+            
+            # Biểu đồ tròn: Tỷ lệ các loại xe
+            ax1.pie(df['Tổng'], labels=df['Loại xe'], autopct='%1.1f%%', startangle=90)
+            ax1.set_title("Tỷ lệ các loại xe")
+            
+            # Biểu đồ cột: So sánh Vào/Ra
+            x = range(len(df['Loại xe']))
+            width = 0.35
+            ax2.bar([i - width/2 for i in x], df['Số xe Vào (Entry)'], width, label='Vào', color='green')
+            ax2.bar([i + width/2 for i in x], df['Số xe Ra (Exit)'], width, label='Ra', color='red')
+            ax2.set_title("Lưu lượng Vào / Ra")
+            ax2.set_xticks(x)
+            ax2.set_xticklabels(df['Loại xe'])
+            ax2.legend()
+            
+            plt.tight_layout()
+            
+            # Đưa biểu đồ vào Tkinter
+            canvas = FigureCanvasTkAgg(fig, master=chart_win)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        except Exception as e:
+            messagebox.showerror("Lỗi biểu đồ", f"Không thể vẽ biểu đồ: {str(e)}")
 
 
 if __name__ == "__main__":
