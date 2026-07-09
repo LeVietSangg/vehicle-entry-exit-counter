@@ -1,6 +1,9 @@
 import subprocess
 import sys
 import re
+import os
+import threading
+import queue
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -18,6 +21,10 @@ class VehicleCounterApp:
         self.iou = tk.StringVar(value="0.45")
         self.entry_line_y = tk.StringVar(value="430")
         self.exit_line_y = tk.StringVar(value="330")
+
+        self.process = None
+        self.log_queue = queue.Queue()
+        self.is_running = False
 
         self.build_ui()
 
@@ -49,26 +56,38 @@ class VehicleCounterApp:
         button_frame = tk.Frame(self.root)
         button_frame.pack(pady=15)
 
-        tk.Button(
+        self.start_btn = tk.Button(
             button_frame,
             text="Start Processing",
             width=18,
             command=self.start_processing
-        ).grid(row=0, column=0, padx=8)
+        )
+        self.start_btn.grid(row=0, column=0, padx=8)
+
+        self.stop_btn = tk.Button(
+            button_frame,
+            text="Stop Processing",
+            width=18,
+            bg="#ff4d4d",
+            fg="white",
+            state=tk.DISABLED,
+            command=self.stop_processing
+        )
+        self.stop_btn.grid(row=0, column=1, padx=8)
 
         tk.Button(
             button_frame,
             text="Reset",
             width=12,
             command=self.reset_form
-        ).grid(row=0, column=1, padx=8)
+        ).grid(row=0, column=2, padx=8)
 
         tk.Button(
             button_frame,
             text="Open Outputs",
             width=15,
             command=self.open_outputs
-        ).grid(row=0, column=2, padx=8)
+        ).grid(row=0, column=3, padx=8)
 
         result_frame = tk.LabelFrame(self.root, text="Processing Result", padx=10, pady=10)
         result_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -113,44 +132,80 @@ class VehicleCounterApp:
 
         command = [
             sys.executable,
+            "-u",
             "main.py",
             "--source", video,
             "--model", self.model_path.get(),
             "--conf", self.conf.get(),
             "--iou", self.iou.get(),
             "--entry_line_y", self.entry_line_y.get(),
-            "--exit_line_y", self.exit_line_y.get(),
+            "--exit_line_y", self.exit_line_y.get()
         ]
 
         self.output_text.delete("1.0", tk.END)
-        self.output_text.insert(tk.END, "Đang xử lý video...\n\n")
-        self.root.update()
+        self.output_text.insert(tk.END, "Đang khởi tạo...\n\n")
+        
+        self.is_running = True
+        self.start_btn.config(state=tk.DISABLED)
+        self.stop_btn.config(state=tk.NORMAL)
+        
+        if os.path.exists("stop.flag"):
+            os.remove("stop.flag")
 
+        threading.Thread(target=self.run_process_thread, args=(command,), daemon=True).start()
+        self.root.after(100, self.update_console)
+
+    def stop_processing(self):
+        if self.is_running:
+            with open("stop.flag", "w") as f:
+                f.write("STOP")
+            self.output_text.insert(tk.END, "\n[Hệ thống] Đã nhận lệnh dừng khẩn cấp, đang dọn dẹp...\n")
+            self.stop_btn.config(state=tk.DISABLED)
+
+    def run_process_thread(self, command):
         try:
-            result = subprocess.run(
+            self.process = subprocess.Popen(
                 command,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                encoding="utf-8"
+                encoding="utf-8",
+                bufsize=1,
+                universal_newlines=True
             )
-
-            self.output_text.insert(tk.END, result.stdout)
-
-            if result.stderr:
-                self.output_text.insert(tk.END, "\n--- ERROR ---\n")
-                self.output_text.insert(tk.END, result.stderr)
-
-            # Phân tích log để lấy đường dẫn file Excel
-            match = re.search(r"Đã lưu báo cáo Excel tại:\s*(.*\.xlsx)", result.stdout)
             
-            messagebox.showinfo("Done", "Xử lý hoàn tất. Kiểm tra thư mục outputs.")
-            
-            if match:
-                excel_path = match.group(1).strip()
-                self.show_chart(excel_path)
-
+            for line in iter(self.process.stdout.readline, ''):
+                self.log_queue.put(line)
+                
+            self.process.stdout.close()
+            self.process.wait()
+            self.log_queue.put("___PROCESS_DONE___")
         except Exception as e:
-            messagebox.showerror("Error", str(e))
+            self.log_queue.put(f"Lỗi khi chạy tiến trình: {str(e)}")
+            self.log_queue.put("___PROCESS_DONE___")
+
+    def update_console(self):
+        while not self.log_queue.empty():
+            line = self.log_queue.get_nowait()
+            if line == "___PROCESS_DONE___":
+                self.is_running = False
+                self.start_btn.config(state=tk.NORMAL)
+                self.stop_btn.config(state=tk.DISABLED)
+                
+                # Check for output excel in text
+                output_content = self.output_text.get("1.0", tk.END)
+                match = re.search(r"Đã lưu báo cáo Excel tại:\s*(.*\.xlsx)", output_content)
+                if match:
+                    excel_path = match.group(1).strip()
+                    messagebox.showinfo("Done", "Xử lý hoàn tất. Kiểm tra thư mục outputs.")
+                    self.show_chart(excel_path)
+                return
+            else:
+                self.output_text.insert(tk.END, line)
+                self.output_text.see(tk.END)
+                
+        if self.is_running:
+            self.root.after(100, self.update_console)
 
     def reset_form(self):
         self.video_path.set("data/video_easy.mp4")

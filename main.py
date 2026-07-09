@@ -30,6 +30,7 @@ def _parse_args() -> argparse.Namespace:
 
     parser.add_argument("--entry_line_y", type=int, default=430)
     parser.add_argument("--exit_line_y", type=int, default=330)
+    parser.add_argument("--headless", action="store_true", help="Chạy không cần hiển thị cửa sổ OpenCV")
 
     return parser.parse_args()
 
@@ -91,6 +92,11 @@ def main() -> None:
     print("Bắt đầu xử lý video...")
 
     while True:
+        if os.path.exists("stop.flag"):
+            print("Người dùng đã dừng tiến trình sớm.")
+            os.remove("stop.flag")
+            break
+
         ok, frame = cap.read()
         if not ok:
             break
@@ -181,14 +187,15 @@ def main() -> None:
 
         out_video.write(annotated_frame)
 
-        display_frame = cv2.resize(annotated_frame, (960, 540))
-        cv2.imshow(
-            "Vehicle Entry/Exit Counter - Processing Video",
-            display_frame,
-        )
+        if not args.headless:
+            display_frame = cv2.resize(annotated_frame, (960, 540))
+            cv2.imshow(
+                "Vehicle Entry/Exit Counter - Processing Video",
+                display_frame,
+            )
 
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
 
         if frame_index % 50 == 0:
             print(
