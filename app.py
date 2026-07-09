@@ -4,6 +4,7 @@ import re
 import os
 import threading
 import queue
+import cv2
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -52,6 +53,13 @@ class VehicleCounterApp:
         self.add_input(form, "IoU", self.iou, 3)
         self.add_input(form, "Entry Line Y", self.entry_line_y, 4)
         self.add_input(form, "Exit Line Y", self.exit_line_y, 5)
+
+        tk.Button(
+            form,
+            text="🎯 Pick Lines",
+            command=self.pick_lines_visual,
+            bg="#e0f7fa"
+        ).grid(row=4, column=2, rowspan=2, padx=5, sticky="ns")
 
         button_frame = tk.Frame(self.root)
         button_frame.pack(pady=15)
@@ -122,6 +130,54 @@ class VehicleCounterApp:
 
         if file_path:
             self.video_path.set(file_path)
+
+    def pick_lines_visual(self):
+        video = self.video_path.get()
+        if not Path(video).exists():
+            messagebox.showerror("Error", "Không tìm thấy video đầu vào để lấy mẫu.")
+            return
+
+        cap = cv2.VideoCapture(video)
+        ret, frame = cap.read()
+        cap.release()
+
+        if not ret:
+            messagebox.showerror("Error", "Không thể đọc frame từ video.")
+            return
+
+        clone = frame.copy()
+        cv2.putText(clone, "Click lan 1: Chon Y cho vach VAO (Xanh)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(clone, "Click lan 2: Chon Y cho vach RA (Do)", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        
+        click_count = [0]
+
+        def mouse_callback(event, x, y, flags, param):
+            if event == cv2.EVENT_LBUTTONDOWN:
+                if click_count[0] == 0:
+                    self.entry_line_y.set(str(y))
+                    mid_x = clone.shape[1] // 2
+                    cv2.line(clone, (mid_x, y), (clone.shape[1], y), (0, 255, 0), 2)
+                    cv2.imshow("Pick Lines - Nhan Esc de thoat", clone)
+                    click_count[0] += 1
+                elif click_count[0] == 1:
+                    self.exit_line_y.set(str(y))
+                    mid_x = clone.shape[1] // 2
+                    cv2.line(clone, (0, y), (mid_x, y), (0, 0, 255), 2)
+                    cv2.imshow("Pick Lines - Nhan Esc de thoat", clone)
+                    click_count[0] += 1
+                    
+        cv2.namedWindow("Pick Lines - Nhan Esc de thoat")
+        cv2.setMouseCallback("Pick Lines - Nhan Esc de thoat", mouse_callback)
+        
+        while True:
+            cv2.imshow("Pick Lines - Nhan Esc de thoat", clone)
+            key = cv2.waitKey(1) & 0xFF
+            if key == 27 or click_count[0] == 2:  # ESC key or 2 clicks
+                if click_count[0] == 2:
+                    cv2.waitKey(500) # Give user a moment to see the drawn line
+                break
+                
+        cv2.destroyWindow("Pick Lines - Nhan Esc de thoat")
 
     def start_processing(self):
         video = self.video_path.get()
