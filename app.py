@@ -6,8 +6,11 @@ import threading
 import queue
 import cv2
 import tkinter as tk
+from tkinter import ttk
 from pathlib import Path
 from tkinter import filedialog, messagebox
+
+from database import get_all_sessions
 
 
 class VehicleCounterApp:
@@ -96,6 +99,14 @@ class VehicleCounterApp:
             width=15,
             command=self.open_outputs
         ).grid(row=0, column=3, padx=8)
+
+        tk.Button(
+            button_frame,
+            text="Lịch sử hệ thống",
+            width=18,
+            bg="#d4edda",
+            command=self.show_history_window
+        ).grid(row=0, column=4, padx=8)
 
         result_frame = tk.LabelFrame(self.root, text="Processing Result", padx=10, pady=10)
         result_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -322,6 +333,39 @@ class VehicleCounterApp:
 
         except Exception as e:
             messagebox.showerror("Lỗi biểu đồ", f"Không thể vẽ biểu đồ: {str(e)}")
+
+
+    def show_history_window(self):
+        history_win = tk.Toplevel(self.root)
+        history_win.title("Lịch sử Hệ thống")
+        history_win.geometry("900x400")
+
+        # Create Treeview
+        columns = ("ID", "Thời gian", "Tên Video", "Lượng Vào", "Lượng Ra", "File Báo Cáo")
+        tree = ttk.Treeview(history_win, columns=columns, show="headings")
+        
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, anchor=tk.CENTER)
+            
+        tree.column("ID", width=50)
+        tree.column("Thời gian", width=150)
+        tree.column("Tên Video", width=150)
+        tree.column("Lượng Vào", width=100)
+        tree.column("Lượng Ra", width=100)
+        tree.column("File Báo Cáo", width=350)
+
+        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Load data
+        sessions = get_all_sessions()
+        for session in sessions:
+            tree.insert("", tk.END, values=session)
+
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(history_win, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
 
 if __name__ == "__main__":

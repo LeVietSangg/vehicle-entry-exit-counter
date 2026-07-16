@@ -10,8 +10,11 @@ import os
 from pathlib import Path
 
 import cv2
+import gc
+import torch
 import supervision as sv
 
+from database import init_db, insert_session
 from processing.counter import VEHICLE_CLASS_MAP, VehicleLogger
 from processing.tracker import build_yolo_kwargs, init_tracker, init_yolo
 
@@ -42,6 +45,8 @@ def main() -> None:
     if not source_path.exists():
         print(f"Không tìm thấy video: {source_path}")
         return
+
+    init_db()
 
     print("Đang khởi tạo YOLOv8 và ByteTrack...")
 
@@ -202,6 +207,17 @@ def main() -> None:
                 f"Đã xử lý frame {frame_index}... "
                 f"Entry: {logger.total_entry}, Exit: {logger.total_exit}"
             )
+            
+        # Giải phóng bộ nhớ thủ công để tránh rò rỉ RAM (Fix OutOfMemory)
+        del frame
+        del annotated_frame
+        del results
+        del detections
+        
+        if frame_index % 30 == 0:
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     cap.release()
     out_video.release()
@@ -209,6 +225,13 @@ def main() -> None:
 
     report_path = f"outputs/report_{source_path.stem}.xlsx"
     final_path = logger.export_to_excel(report_path)
+
+    insert_session(
+        video_source=source_path.name,
+        total_entry=logger.total_entry,
+        total_exit=logger.total_exit,
+        excel_path=final_path
+    )
 
     print("\n[Hoàn thành]")
     print(f"Tổng frame: {frame_index}")
