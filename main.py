@@ -12,6 +12,7 @@ from pathlib import Path
 import cv2
 import gc
 import torch
+import time
 import supervision as sv
 
 from database import init_db, insert_session
@@ -94,6 +95,8 @@ def main() -> None:
     label_annotator = sv.LabelAnnotator(text_thickness=2, text_scale=0.5)
 
     frame_index = 0
+    prev_time = time.time()
+    fps_display = 0.0
     print("Bắt đầu xử lý video...")
 
     while True:
@@ -107,6 +110,12 @@ def main() -> None:
             break
 
         frame_index += 1
+        
+        current_time = time.time()
+        time_diff = current_time - prev_time
+        if time_diff > 0:
+            fps_display = 1.0 / time_diff
+        prev_time = current_time
 
         results = model.predict(frame, verbose=False, **yolo_kwargs)
         detections = sv.Detections.from_ultralytics(results[0])
@@ -114,14 +123,14 @@ def main() -> None:
         detections = tracker.update_with_detections(detections)
 
         if len(detections) > 0 and detections.tracker_id is not None:
-            crossed_entry, _ = entry_line.trigger(detections=detections)
-            _, crossed_exit = exit_line.trigger(detections=detections)
+            crossed_entry_in, crossed_entry_out = entry_line.trigger(detections=detections)
+            crossed_exit_in, crossed_exit_out = exit_line.trigger(detections=detections)
 
             for i, track_id in enumerate(detections.tracker_id):
                 class_id = int(detections.class_id[i])
                 confidence = float(detections.confidence[i])
 
-                if crossed_entry[i]:
+                if crossed_entry_in[i] or crossed_entry_out[i]:
                     logger.add_log(
                         track_id=int(track_id),
                         class_id=class_id,
@@ -130,7 +139,7 @@ def main() -> None:
                         confidence=confidence,
                     )
 
-                elif crossed_exit[i]:
+                elif crossed_exit_in[i] or crossed_exit_out[i]:
                     logger.add_log(
                         track_id=int(track_id),
                         class_id=class_id,
@@ -187,6 +196,28 @@ def main() -> None:
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             (0, 0, 255),
+            2,
+        )
+        
+        inside_zone = logger.total_entry - logger.total_exit
+        cv2.putText(
+            annotated_frame,
+            f"INSIDE ZONE: {inside_zone}",
+            (30, 130),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (200, 0, 0),
+            2,
+        )
+        
+        # Hien thi FPS o goc tren ben phai
+        cv2.putText(
+            annotated_frame,
+            f"FPS: {fps_display:.1f}",
+            (width - 200, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 0, 0),
             2,
         )
 
